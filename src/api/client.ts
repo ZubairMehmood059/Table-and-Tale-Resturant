@@ -19,6 +19,7 @@ async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   const finalUrl = url.startsWith('/') && API_BASE ? `${API_BASE}${url}` : url;
   const response = await fetch(finalUrl, {
     ...options,
+    credentials: options?.credentials ?? 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       ...(options?.headers || {}),

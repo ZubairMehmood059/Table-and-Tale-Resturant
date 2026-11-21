@@ -36,6 +36,9 @@ managementRoutes.post('/login', async (req, res) => {
 
     if (data.ok) {
       const token = issueStaffSession(clientKey, now);
+      res.setHeader('Set-Cookie', [
+        `staff_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=86400`,
+      ]);
       res.json({
         ok: true,
         token,
@@ -62,6 +65,9 @@ managementRoutes.post('/login', async (req, res) => {
 managementRoutes.post('/logout', (req, res) => {
   const token = extractBearerToken(req);
   revokeStaffSession(token);
+  res.setHeader('Set-Cookie', [
+    `staff_token=; Path=/; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`,
+  ]);
   res.json({ ok: true });
 });
 
