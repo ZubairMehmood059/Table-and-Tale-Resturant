@@ -1,0 +1,6 @@
+{
+  "name": "Table & Tale — Restaurant Management System",
+  "description": "Full-stack restaurant ordering, table reservation, billing, and management platform powered by a modular C++ business engine and warm Blush, Ivory, Champagne, and Espresso design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

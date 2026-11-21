@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "dev",
+      "problemMatcher": [],
+      "label": "npm: dev",
+      "detail": "node --import tsx server.ts",
+      "isBackground": true
+    },
+    {
+      "type": "npm",
+      "script": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "label": "npm: build",
+      "detail": "node scripts/build.mjs"
+    },
+    {
+      "type": "npm",
+      "script": "test",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "label": "npm: test",
+      "detail": "node --import tsx tests/api.test.ts"
+    },
+    {
+      "type": "npm",
+      "script": "lint",
+      "problemMatcher": ["$tsc"],
+      "label": "npm: lint",
+      "detail": "node ./node_modules/typescript/bin/tsc --noEmit"
+    }
+  ]
+}
