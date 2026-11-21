@@ -217,11 +217,30 @@ async function runTests() {
     assert.equal(mgmtFbData.feedbacks[0].customerName, 'Bilal Tariq');
 
     // 10. Netlify Functions serverless handler test
+    interface ServerlessResponse {
+      statusCode: number;
+      body: string;
+      headers?: Record<string, string | string[]>;
+      isBase64Encoded?: boolean;
+    }
+
+    const isServerlessResponse = (res: object): res is ServerlessResponse => {
+      return (
+        typeof res === 'object' &&
+        res !== null &&
+        'statusCode' in res &&
+        typeof (res as { statusCode: unknown }).statusCode === 'number' &&
+        'body' in res &&
+        typeof (res as { body: unknown }).body === 'string'
+      );
+    };
+
     const { handler } = await import('../netlify/functions/api.ts');
     const netlifyRes = await handler(
       { httpMethod: 'GET', path: '/api/restaurant/info', headers: {} },
       {}
     );
+    assert(isServerlessResponse(netlifyRes));
     assert.equal(netlifyRes.statusCode, 200);
     const netlifyInfo = JSON.parse(netlifyRes.body);
     assert.equal(netlifyInfo.ok, true);
@@ -231,6 +250,7 @@ async function runTests() {
       { httpMethod: 'GET', path: '/.netlify/functions/api/tables', headers: {} },
       {}
     );
+    assert(isServerlessResponse(netlifyDirectRes));
     assert.equal(netlifyDirectRes.statusCode, 200);
     const netlifyTables = JSON.parse(netlifyDirectRes.body);
     assert.equal(netlifyTables.ok, true);
