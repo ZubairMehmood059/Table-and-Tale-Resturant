@@ -1,7 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
-
 # Table & Tale – Restaurant Management System
 
 A full‑stack, Vite‑powered SPA that lets customers explore the menu, place orders, and make reservations. It ships with a **C++ engine fallback** for fast table‑allocation logic, but gracefully degrades to a pure‑Node implementation when a compiler is unavailable (Windows, Netlify builds, etc.). The project is pre‑configured for **Netlify** continuous deployment and includes a robust CI workflow.
