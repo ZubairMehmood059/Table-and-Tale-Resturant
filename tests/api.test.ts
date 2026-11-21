@@ -216,6 +216,25 @@ async function runTests() {
     assert.equal(mgmtFbData.totalFeedback, 1);
     assert.equal(mgmtFbData.feedbacks[0].customerName, 'Bilal Tariq');
 
+    // 10. Netlify Functions serverless handler test
+    const { handler } = await import('../netlify/functions/api.ts');
+    const netlifyRes = await handler(
+      { httpMethod: 'GET', path: '/api/restaurant/info', headers: {} },
+      {}
+    );
+    assert.equal(netlifyRes.statusCode, 200);
+    const netlifyInfo = JSON.parse(netlifyRes.body);
+    assert.equal(netlifyInfo.ok, true);
+    assert.equal(netlifyInfo.restaurant.name, 'TABLE & TALE');
+
+    const netlifyDirectRes = await handler(
+      { httpMethod: 'GET', path: '/.netlify/functions/api/tables', headers: {} },
+      {}
+    );
+    assert.equal(netlifyDirectRes.statusCode, 200);
+    const netlifyTables = JSON.parse(netlifyDirectRes.body);
+    assert.equal(netlifyTables.ok, true);
+
     console.log('All Express + C++ API integration tests PASSED!');
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));

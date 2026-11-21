@@ -13,14 +13,32 @@ import type {
   TablesResponse,
 } from '@/types/restaurant';
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const finalUrl = url.startsWith('/') && API_BASE ? `${API_BASE}${url}` : url;
+  const response = await fetch(finalUrl, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(options?.headers || {}),
     },
   });
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    if (text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<html')) {
+      throw new Error(
+        `API server returned HTML instead of JSON (${response.status}) from ${url}. Ensure the backend or Netlify function is active.`
+      );
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new Error(`Invalid JSON received (${response.status}): ${text.slice(0, 100)}`);
+    }
+  }
 
   const data = (await response.json()) as T & { message?: string };
   if (!response.ok) {

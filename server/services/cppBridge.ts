@@ -20,8 +20,12 @@ let nativeAvailable = false;
 let queue: Promise<unknown> = Promise.resolve();
 
 export function ensureDataDirectory(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch {
+    // Read-only filesystem (e.g. AWS Lambda / Netlify)
   }
 }
 
@@ -32,12 +36,12 @@ export function ensureCppEngineBuilt(): void {
 
   ensureDataDirectory();
 
-  const binDir = path.dirname(ENGINE_BIN);
-  if (!fs.existsSync(binDir)) {
-    fs.mkdirSync(binDir, { recursive: true });
-  }
-
   try {
+    const binDir = path.dirname(ENGINE_BIN);
+    if (!fs.existsSync(binDir)) {
+      fs.mkdirSync(binDir, { recursive: true });
+    }
+
     execFileSync('g++', ['--version'], { stdio: 'ignore' });
     const needsBuild =
       !fs.existsSync(ENGINE_BIN) ||
