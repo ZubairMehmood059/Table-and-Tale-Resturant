@@ -11,12 +11,12 @@ interface FooterProps {
   defaultCustomerName?: string;
 }
 
-const FOOTER_NAV: Array<{ id: AppSection; label: string }> = [
-  { id: 'home', label: 'Home' },
-  { id: 'menu', label: 'Menu & Order' },
-  { id: 'reservations', label: 'Reservations' },
-  { id: 'order', label: 'Order & Checkout' },
-  { id: 'management', label: 'Management Panel' },
+const FOOTER_NAV: Array<{ id: AppSection; label: string; path: string }> = [
+  { id: 'home', label: 'Home', path: '/' },
+  { id: 'menu', label: 'Menu & Order', path: '/menu' },
+  { id: 'reservations', label: 'Reservations', path: '/reservations' },
+  { id: 'order', label: 'Order & Checkout', path: '/order' },
+  { id: 'management', label: 'Management Panel', path: '/management' },
 ];
 
 const SERVICE_CATEGORIES = [
@@ -129,7 +129,7 @@ export function Footer({
             {/* Column 1: Brand Identity & Feedback CTA */}
             <div className="md:col-span-7 lg:col-span-5 space-y-5">
               <a
-                href="#home"
+                href="/"
                 onClick={(e) => {
                   e.preventDefault();
                   onNavigate('home');
@@ -161,14 +161,17 @@ export function Footer({
                   <span>Leave Guest Feedback</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => onNavigate('reservations')}
+                <a
+                  href="/reservations"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('reservations');
+                  }}
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-3 rounded-full bg-[#FAF1EB] text-[#1E1512] text-xs sm:text-sm font-semibold border border-[#C6A36A]/75 hover:bg-[#EFE1DA] hover:border-[#B58E4C] transition-colors cursor-pointer"
                 >
                   <span>Reserve a Table</span>
                   <ArrowUpRight className="w-3.5 h-3.5 text-[#7D591D]" />
-                </button>
+                </a>
               </div>
             </div>
 
@@ -179,10 +182,13 @@ export function Footer({
                 {FOOTER_NAV.map((item) => {
                   const isActive = activeSection === item.id;
                   return (
-                    <button
+                    <a
                       key={item.id}
-                      type="button"
-                      onClick={() => onNavigate(item.id)}
+                      href={item.path}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onNavigate(item.id);
+                      }}
                       className={`group inline-flex items-center gap-2.5 py-1 text-sm transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C6A36A] ${
                         isActive
                           ? 'font-bold text-[#1E1512]'
@@ -198,7 +204,7 @@ export function Footer({
                         }`}
                       />
                       <span>{item.label}</span>
-                    </button>
+                    </a>
                   );
                 })}
               </nav>

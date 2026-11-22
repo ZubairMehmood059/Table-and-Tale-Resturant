@@ -17,10 +17,40 @@ import type {
   TableSummary,
 } from '@/types/restaurant';
 
+function getSectionFromPath(pathname: string): AppSection {
+  const clean = pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  if (clean === '/menu') return 'menu';
+  if (clean === '/reservations' || clean === '/reservation' || clean === '/tables') return 'reservations';
+  if (clean === '/order' || clean === '/checkout' || clean === '/orders') return 'order';
+  if (clean === '/management' || clean === '/admin' || clean === '/staff') return 'management';
+  return 'home';
+}
+
+function getPathForSection(section: AppSection): string {
+  switch (section) {
+    case 'menu':
+      return '/menu';
+    case 'reservations':
+      return '/reservations';
+    case 'order':
+      return '/order';
+    case 'management':
+      return '/management';
+    case 'home':
+    default:
+      return '/';
+  }
+}
+
 export default function App() {
   const [bootstrap, setBootstrap] = useState<RestaurantBootstrap | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<AppSection>('home');
+  const [activeSection, setActiveSection] = useState<AppSection>(() => {
+    if (typeof window !== 'undefined') {
+      return getSectionFromPath(window.location.pathname);
+    }
+    return 'home';
+  });
 
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [tableSummary, setTableSummary] = useState<TableSummary | null>(null);
@@ -68,36 +98,39 @@ export default function App() {
     };
   }, []);
 
-  const handleNavigate = useCallback((section: AppSection) => {
-    setActiveSection(section);
-    const el = document.getElementById(section);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  // Sync browser back and forward button navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const section = getSectionFromPath(window.location.pathname);
+      setActiveSection(section);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // Update page title on navigation
   useEffect(() => {
     if (!bootstrap) return;
-    const sectionIds: AppSection[] = ['home', 'menu', 'reservations', 'order', 'management'];
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        if (visible[0]?.target?.id) {
-          setActiveSection(visible[0].target.id as AppSection);
-        }
-      },
-      { rootMargin: '-25% 0px -55% 0px', threshold: [0.1, 0.35, 0.6] }
-    );
+    const titles: Record<AppSection, string> = {
+      home: `${bootstrap.restaurant.name} — Fine Dining & Unforgettable Stories`,
+      menu: `${bootstrap.restaurant.name} — Editorial Menu`,
+      reservations: `${bootstrap.restaurant.name} — Table Reservations`,
+      order: `${bootstrap.restaurant.name} — Order & Checkout`,
+      management: `${bootstrap.restaurant.name} — Management Console`,
+    };
+    document.title = titles[activeSection] || bootstrap.restaurant.name;
+  }, [activeSection, bootstrap]);
 
-    for (const id of sectionIds) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
+  const handleNavigate = useCallback((section: AppSection) => {
+    setActiveSection(section);
+    const targetPath = getPathForSection(section);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ section }, '', targetPath);
     }
-
-    return () => observer.disconnect();
-  }, [bootstrap]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleAddItem = useCallback((itemNumber: number, qty = 1) => {
     setCart((prev) => ({
@@ -177,71 +210,81 @@ export default function App() {
       />
 
       <main className="flex-1">
-        <HeroSection
-          restaurant={bootstrap.restaurant}
-          settings={bootstrap.settings}
-          tableSummary={tableSummary}
-          onNavigate={handleNavigate}
-        />
+        {activeSection === 'home' && (
+          <HeroSection
+            restaurant={bootstrap.restaurant}
+            settings={bootstrap.settings}
+            tableSummary={tableSummary}
+            onNavigate={handleNavigate}
+          />
+        )}
 
-        <MenuShowcase
-          categories={bootstrap.menu.categories}
-          items={bootstrap.menu.items}
-          cart={cart}
-          onAddItem={handleAddItem}
-          onSetQuantity={handleSetQuantity}
-          onNavigate={handleNavigate}
-        />
+        {activeSection === 'menu' && (
+          <MenuShowcase
+            categories={bootstrap.menu.categories}
+            items={bootstrap.menu.items}
+            cart={cart}
+            onAddItem={handleAddItem}
+            onSetQuantity={handleSetQuantity}
+            onNavigate={handleNavigate}
+          />
+        )}
 
-        <ReservationWorkspace
-          customerName={customerName}
-          onCustomerNameChange={setCustomerName}
-          tables={tables}
-          summary={tableSummary}
-          reservedByMe={reservedTables}
-          guests={guests}
-          tableCapacity={bootstrap.settings.tableCapacity}
-          onReservationUpdated={(nextTables, nextSummary, myTables, nextGuests) => {
-            setTables(nextTables);
-            setTableSummary(nextSummary);
-            setReservedTables(myTables);
-            setGuests(nextGuests);
-            if (myTables.length > 0) {
-              setDiningType('Dine-in');
-            }
-          }}
-          onRefreshTables={refreshTables}
-        />
+        {activeSection === 'reservations' && (
+          <ReservationWorkspace
+            customerName={customerName}
+            onCustomerNameChange={setCustomerName}
+            tables={tables}
+            summary={tableSummary}
+            reservedByMe={reservedTables}
+            guests={guests}
+            tableCapacity={bootstrap.settings.tableCapacity}
+            onReservationUpdated={(nextTables, nextSummary, myTables, nextGuests) => {
+              setTables(nextTables);
+              setTableSummary(nextSummary);
+              setReservedTables(myTables);
+              setGuests(nextGuests);
+              if (myTables.length > 0) {
+                setDiningType('Dine-in');
+              }
+            }}
+            onRefreshTables={refreshTables}
+          />
+        )}
 
-        <OrderCheckoutPanel
-          restaurant={bootstrap.restaurant}
-          settings={bootstrap.settings}
-          menuItems={bootstrap.menu.items}
-          customerName={customerName}
-          onCustomerNameChange={setCustomerName}
-          diningType={diningType}
-          onDiningTypeChange={setDiningType}
-          deliveryAddress={deliveryAddress}
-          onDeliveryAddressChange={setDeliveryAddress}
-          reservedTables={reservedTables}
-          guests={guests}
-          cart={cart}
-          onSetQuantity={handleSetQuantity}
-          onClearCartAndReservation={handleClearCartAndReservation}
-          onNavigate={handleNavigate}
-          onRefreshTables={refreshTables}
-        />
+        {activeSection === 'order' && (
+          <OrderCheckoutPanel
+            restaurant={bootstrap.restaurant}
+            settings={bootstrap.settings}
+            menuItems={bootstrap.menu.items}
+            customerName={customerName}
+            onCustomerNameChange={setCustomerName}
+            diningType={diningType}
+            onDiningTypeChange={setDiningType}
+            deliveryAddress={deliveryAddress}
+            onDeliveryAddressChange={setDeliveryAddress}
+            reservedTables={reservedTables}
+            guests={guests}
+            cart={cart}
+            onSetQuantity={handleSetQuantity}
+            onClearCartAndReservation={handleClearCartAndReservation}
+            onNavigate={handleNavigate}
+            onRefreshTables={refreshTables}
+          />
+        )}
 
-        <ManagementConsole
-          menuItems={bootstrap.menu.items}
-          tables={tables}
-          tableSummary={tableSummary}
-          onTablesSynced={(nextTables, nextSummary) => {
-            setTables(nextTables);
-            setTableSummary(nextSummary);
-          }}
-          onRefreshTables={refreshTables}
-        />
+        {activeSection === 'management' && (
+          <ManagementConsole
+            menuItems={bootstrap.menu.items}
+            tables={tables}
+            tableSummary={tableSummary}
+            onTablesSynced={(nextTables, nextSummary) => {
+              setTables(nextTables);
+              setTableSummary(nextSummary);
+            }}
+            onRefreshTables={refreshTables}
+          />
+        )}
       </main>
 
       <Footer

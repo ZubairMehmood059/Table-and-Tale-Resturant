@@ -12,12 +12,12 @@ interface HeaderProps {
   cartCount: number;
 }
 
-const NAV_ITEMS: Array<{ id: AppSection; label: string }> = [
-  { id: 'home', label: 'Home' },
-  { id: 'menu', label: 'Menu & Order' },
-  { id: 'reservations', label: 'Reservations' },
-  { id: 'order', label: 'Checkout' },
-  { id: 'management', label: 'Management' },
+const NAV_ITEMS: Array<{ id: AppSection; label: string; path: string }> = [
+  { id: 'home', label: 'Home', path: '/' },
+  { id: 'menu', label: 'Menu & Order', path: '/menu' },
+  { id: 'reservations', label: 'Reservations', path: '/reservations' },
+  { id: 'order', label: 'Checkout', path: '/order' },
+  { id: 'management', label: 'Management', path: '/management' },
 ];
 
 export function Header({ activeSection, onNavigate, cartCount }: HeaderProps) {
@@ -56,7 +56,7 @@ export function Header({ activeSection, onNavigate, cartCount }: HeaderProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-2.5 md:gap-3 lg:gap-8">
         {/* Zone 1: Brand Crest + Single-Line Wordmark */}
         <a
-          href="#home"
+          href="/"
           onClick={(e) => {
             e.preventDefault();
             handleSelect('home');
@@ -77,10 +77,13 @@ export function Header({ activeSection, onNavigate, cartCount }: HeaderProps) {
           {NAV_ITEMS.map((item) => {
             const isActive = activeSection === item.id;
             return (
-              <button
+              <a
                 key={item.id}
-                type="button"
-                onClick={() => handleSelect(item.id)}
+                href={item.path}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleSelect(item.id);
+                }}
                 className={`relative px-2.5 lg:px-4 py-1.5 rounded-full text-xs lg:text-[13px] tracking-[0.01em] font-semibold whitespace-nowrap shrink-0 transition-colors duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C6A36A] ${
                   isActive
                     ? 'text-[#FFF9F1]'
@@ -95,7 +98,7 @@ export function Header({ activeSection, onNavigate, cartCount }: HeaderProps) {
                   />
                 )}
                 <span className="relative z-10">{item.label}</span>
-              </button>
+              </a>
             );
           })}
         </nav>
@@ -103,27 +106,33 @@ export function Header({ activeSection, onNavigate, cartCount }: HeaderProps) {
         {/* Zone 3: Primary Action + Mobile Controls */}
         <div className="flex items-center gap-2 sm:gap-2.5 lg:gap-3 shrink-0">
           {cartCount > 0 && (
-            <button
-              type="button"
-              onClick={() => handleSelect('order')}
+            <a
+              href="/order"
+              onClick={(e) => {
+                e.preventDefault();
+                handleSelect('order');
+              }}
               aria-label={`View order with ${cartCount} items`}
               className="sm:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#1E1512] text-[#FFF9F1] text-xs font-semibold border border-[#C6A36A]/70 tabular-nums whitespace-nowrap shrink-0 cursor-pointer"
             >
               <ShoppingBag className="w-3.5 h-3.5 text-[#DFBD7E]" />
               <span>{cartCount}</span>
-            </button>
+            </a>
           )}
 
-          <button
-            type="button"
-            onClick={() => handleSelect('order')}
+          <a
+            href="/order"
+            onClick={(e) => {
+              e.preventDefault();
+              handleSelect('order');
+            }}
             className="hidden sm:inline-flex items-center justify-center gap-1.5 lg:gap-2 px-3.5 lg:px-5 py-2 lg:py-2.5 text-xs lg:text-[13px] font-semibold tracking-[0.02em] rounded-full bg-[#1E1512] text-[#FFF9F1] border border-[#C6A36A]/75 hover:bg-[#2E211C] hover:border-[#DFBD7E] shadow-[0_8px_20px_-10px_rgba(30,21,18,0.45)] transition-all duration-150 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C6A36A]"
           >
             <ShoppingBag className="w-3.5 h-3.5 text-[#DFBD7E]" />
             <span className="tabular-nums">
               {cartCount > 0 ? `Order (${cartCount})` : 'Start Order'}
             </span>
-          </button>
+          </a>
 
           <button
             type="button"
@@ -143,28 +152,34 @@ export function Header({ activeSection, onNavigate, cartCount }: HeaderProps) {
           {NAV_ITEMS.map((item) => {
             const isActive = activeSection === item.id;
             return (
-              <button
+              <a
                 key={item.id}
-                type="button"
-                onClick={() => handleSelect(item.id)}
-                className={`w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
+                href={item.path}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleSelect(item.id);
+                }}
+                className={`block w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-[#1E1512] text-[#FFF9F1] border border-[#C6A36A]/60'
                     : 'text-[#2D201B] hover:bg-[#EED8D3]/75 hover:text-[#1E1512]'
                 }`}
               >
                 {item.label}
-              </button>
+              </a>
             );
           })}
           <div className="pt-2 border-t border-[#C6A36A]/40">
-            <button
-              type="button"
-              onClick={() => handleSelect('order')}
-              className="w-full py-3 px-4 rounded-xl bg-[#C6A36A] border border-[#7D591D]/45 text-[#1E1512] text-sm font-bold cursor-pointer tabular-nums"
+            <a
+              href="/order"
+              onClick={(e) => {
+                e.preventDefault();
+                handleSelect('order');
+              }}
+              className="block text-center w-full py-3 px-4 rounded-xl bg-[#C6A36A] border border-[#7D591D]/45 text-[#1E1512] text-sm font-bold cursor-pointer tabular-nums"
             >
               {cartCount > 0 ? `View Order (${cartCount})` : 'Start Order'}
-            </button>
+            </a>
           </div>
         </div>
       )}
