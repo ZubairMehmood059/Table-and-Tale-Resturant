@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { executeNodeEngine } from './nodeEngine.ts';
 
@@ -14,6 +15,47 @@ const ENGINE_BIN = path.join(
 const ENGINE_SRC = path.join(CPP_DIR, 'src', 'engine.cpp');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const DEFAULT_DATA_FILE = path.join(DATA_DIR, 'tabletale_data.txt');
+
+export function resolveDataFilePath(requestedFile?: string): string {
+  if (requestedFile) return requestedFile;
+  if (process.env.TABLETALE_DATA_FILE) return process.env.TABLETALE_DATA_FILE;
+
+  const localFile = DEFAULT_DATA_FILE;
+  const localBak = path.join(DATA_DIR, 'tabletale_data.txt.bak');
+
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.accessSync(DATA_DIR, fs.constants.W_OK);
+    if (!fs.existsSync(localFile) && fs.existsSync(localBak)) {
+      try {
+        fs.copyFileSync(localBak, localFile);
+      } catch {
+        // ignore
+      }
+    }
+    return localFile;
+  } catch {
+    const tmpDir = path.join(os.tmpdir(), 'tabletale_data');
+    try {
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      const tmpFile = path.join(tmpDir, 'tabletale_data.txt');
+      if (!fs.existsSync(tmpFile)) {
+        if (fs.existsSync(localFile)) {
+          fs.copyFileSync(localFile, tmpFile);
+        } else if (fs.existsSync(localBak)) {
+          fs.copyFileSync(localBak, tmpFile);
+        }
+      }
+      return tmpFile;
+    } catch {
+      return localFile;
+    }
+  }
+}
 
 let buildChecked = false;
 let nativeAvailable = false;
@@ -75,10 +117,12 @@ export function invokeCppEngine<T = Record<string, unknown>>(payload: CppPayload
   const run = async (): Promise<T> => {
     ensureCppEngineBuilt();
 
-    const requestBody = JSON.stringify({
+    const dataFile = resolveDataFilePath(payload.dataFile);
+    const resolvedPayload = {
       ...payload,
-      dataFile: payload.dataFile ?? DEFAULT_DATA_FILE,
-    });
+      dataFile,
+    };
+    const requestBody = JSON.stringify(resolvedPayload);
 
     if (nativeAvailable && fs.existsSync(ENGINE_BIN)) {
       try {
@@ -126,11 +170,11 @@ export function invokeCppEngine<T = Record<string, unknown>>(payload: CppPayload
         });
       } catch {
         // In case of execution mismatch (e.g. ELF binary on Windows), fallback to nodeEngine
-        return executeNodeEngine(payload) as T;
+        return executeNodeEngine(resolvedPayload) as T;
       }
     }
 
-    return executeNodeEngine(payload) as T;
+    return executeNodeEngine(resolvedPayload) as T;
   };
 
   const task = queue.then(run, run);

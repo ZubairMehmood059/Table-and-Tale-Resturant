@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 export const NUM_CATEGORIES = 5;
@@ -189,7 +190,10 @@ export function serializeOrder(ord: OrderRecord, index: number) {
     }
   }
 
+  const paymentStatus = ord.paid ? 'PAID' : (ord.cancelled ? 'CANCELLED' : 'UNPAID');
+
   return {
+    orderNumber: index + 1,
     orderIndex: index,
     orderId: `ORD-${(index + 1).toString().padStart(3, '0')}`,
     customerName: ord.customerName,
@@ -198,6 +202,12 @@ export function serializeOrder(ord: OrderRecord, index: number) {
     guests: ord.guests,
     reservedTables,
     items,
+    subtotal: ord.subtotal,
+    discount: ord.discount,
+    discountedSubtotal: roundMoney(ord.subtotal - ord.discount),
+    tax: ord.tax,
+    deliveryCharge: ord.deliveryCharge,
+    billTotal: ord.billTotal,
     bill: {
       subtotal: ord.subtotal,
       discount: ord.discount,
@@ -208,7 +218,8 @@ export function serializeOrder(ord: OrderRecord, index: number) {
     },
     paid: ord.paid,
     cancelled: ord.cancelled,
-    kitchenStatus: ord.kitchenStatus,
+    paymentStatus,
+    kitchenStatus: ord.kitchenStatus || (ord.cancelled ? 'Cancelled' : 'Queued'),
     rating: ord.rating,
     review: ord.review,
     tip: ord.tip,
@@ -265,10 +276,16 @@ function loadState(dataFile: string): RestaurantState {
   };
 
   try {
-    if (!fs.existsSync(dataFile)) {
-      return defaultState;
+    let targetFile = dataFile;
+    if (!fs.existsSync(targetFile)) {
+      const backupFile = targetFile + '.bak';
+      if (fs.existsSync(backupFile)) {
+        targetFile = backupFile;
+      } else {
+        return defaultState;
+      }
     }
-    const content = fs.readFileSync(dataFile, 'utf8');
+    const content = fs.readFileSync(targetFile, 'utf8');
     const lines = content.split(/\r?\n/);
     if (!lines.length || !lines[0].trim()) return defaultState;
 
@@ -419,14 +436,68 @@ function saveState(dataFile: string, state: RestaurantState): void {
     }
 
     fs.writeFileSync(dataFile, lines.join('\n') + '\n', 'utf8');
+    try {
+      fs.writeFileSync(dataFile + '.bak', lines.join('\n') + '\n', 'utf8');
+    } catch {
+      // ignore
+    }
   } catch {
-    // Ignore save failure in read-only / serverless contexts
+    // If saving to the designated path fails (e.g. read-only filesystem in serverless),
+    // fallback to writing to the operating system temporary directory
+    try {
+      const fallbackDir = path.join(os.tmpdir(), 'tabletale_data');
+      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+      const fallbackFile = path.join(fallbackDir, 'tabletale_data.txt');
+      const lines: string[] = ['TTv3'];
+      lines.push(state.totalOrders.toString());
+      lines.push(state.totalSales.toFixed(2));
+      lines.push(state.totalCompletedOrders.toString());
+      for (let i = 0; i < NUM_TABLES; i++) {
+        lines.push(state.tableBooked[i] ? '1' : '0');
+        lines.push((state.reservedBy[i] || '').replace(/[\r\n]/g, ' '));
+      }
+      for (let k = 0; k < state.totalOrders && k < state.orders.length; k++) {
+        const ord = state.orders[k];
+        lines.push((ord.customerName || '').replace(/[\r\n]/g, ' '));
+        lines.push((ord.diningType || '').replace(/[\r\n]/g, ' '));
+        lines.push((ord.deliveryAddress || '').replace(/[\r\n]/g, ' '));
+        lines.push(ord.guests.toString());
+        for (let t = 0; t < NUM_TABLES; t++) lines.push(ord.tables[t] ? '1' : '0');
+        for (let i = 0; i < NUM_CATEGORIES; i++) {
+          for (let j = 0; j < ITEMS_PER_CATEGORY; j++) {
+            lines.push((ord.quantities[i]?.[j] || 0).toString());
+          }
+        }
+        lines.push(ord.subtotal.toFixed(2));
+        lines.push(ord.discount.toFixed(2));
+        lines.push(ord.tax.toFixed(2));
+        lines.push(ord.deliveryCharge.toFixed(2));
+        lines.push(ord.billTotal.toFixed(2));
+        lines.push(ord.paid ? '1' : '0');
+        lines.push(ord.cancelled ? '1' : '0');
+        lines.push((ord.kitchenStatus || (ord.cancelled ? 'Cancelled' : 'Queued')).replace(/[\r\n]/g, ' '));
+        lines.push(ord.rating.toString());
+        lines.push((ord.review || '').replace(/[\r\n]/g, ' '));
+        lines.push(ord.tip.toFixed(2));
+      }
+      lines.push(state.guestFeedbacks.length.toString());
+      for (const fb of state.guestFeedbacks) {
+        lines.push((fb.customerName || '').replace(/[\r\n]/g, ' '));
+        lines.push(fb.rating.toString());
+        lines.push(fb.categories.map((c) => c.replace(/[\r\n|]/g, ' ')).join('|'));
+        lines.push((fb.comment || '').replace(/[\r\n]/g, ' '));
+        lines.push((fb.createdAt || '').replace(/[\r\n]/g, ' '));
+      }
+      fs.writeFileSync(fallbackFile, lines.join('\n') + '\n', 'utf8');
+    } catch {
+      // In-memory state remains active
+    }
   }
 }
 
 export function executeNodeEngine(payload: Record<string, unknown>): Record<string, unknown> {
   const action = String(payload.action || '');
-  const dataFile = String(payload.dataFile || path.join(process.cwd(), 'data', 'tabletale_data.txt'));
+  const dataFile = String(payload.dataFile || process.env.TABLETALE_DATA_FILE || path.join(process.cwd(), 'data', 'tabletale_data.txt'));
 
   if (action === 'info') {
     return {
@@ -784,6 +855,7 @@ export function executeNodeEngine(payload: Record<string, unknown>): Record<stri
       message: 'Thank you for sharing your story with Table & Tale!',
       feedbackIndex,
       feedback: {
+        id: feedbackIndex + 1,
         feedbackIndex,
         customerName: entry.customerName,
         rating: entry.rating,
@@ -878,6 +950,7 @@ export function executeNodeEngine(payload: Record<string, unknown>): Record<stri
       ok: true,
       totalFeedback: state.guestFeedbacks.length,
       feedbacks: state.guestFeedbacks.map((fb, idx) => ({
+        id: idx + 1,
         feedbackIndex: idx,
         customerName: fb.customerName,
         rating: fb.rating,

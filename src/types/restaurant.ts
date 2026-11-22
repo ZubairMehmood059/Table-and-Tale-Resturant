@@ -107,6 +107,7 @@ export interface OrderRecord {
   tax: number;
   deliveryCharge: number;
   billTotal: number;
+  bill?: BillSummary;
   paid: boolean;
   cancelled: boolean;
   paymentStatus: 'PAID' | 'CANCELLED' | 'UNPAID';

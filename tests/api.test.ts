@@ -9,16 +9,12 @@ async function runTests() {
   console.log('Running Table & Tale Express + C++ Integration Tests...');
   ensureCppEngineBuilt();
 
-  const dataFile = path.join(process.cwd(), 'data', 'tabletale_data.txt');
-  const backupPath = dataFile + '.bak';
-  const hadExistingData = fs.existsSync(dataFile);
-  if (hadExistingData) {
-    fs.copyFileSync(dataFile, backupPath);
-    try {
-      fs.unlinkSync(dataFile);
-    } catch {
-      fs.writeFileSync(dataFile, '', 'utf8');
-    }
+  const testDataFile = path.join(process.cwd(), 'data', 'tabletale_test_data.txt');
+  process.env.TABLETALE_DATA_FILE = testDataFile;
+  try {
+    if (fs.existsSync(testDataFile)) fs.unlinkSync(testDataFile);
+  } catch {
+    // ignore
   }
 
   const app = createApp();
@@ -259,18 +255,13 @@ async function runTests() {
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     try {
-      if (fs.existsSync(dataFile)) fs.unlinkSync(dataFile);
+      if (fs.existsSync(testDataFile)) fs.unlinkSync(testDataFile);
+      const testBak = testDataFile + '.bak';
+      if (fs.existsSync(testBak)) fs.unlinkSync(testBak);
     } catch {
       // ignore
     }
-    if (hadExistingData) {
-      fs.copyFileSync(backupPath, dataFile);
-      try {
-        fs.unlinkSync(backupPath);
-      } catch {
-        // ignore
-      }
-    }
+    delete process.env.TABLETALE_DATA_FILE;
   }
 }
 

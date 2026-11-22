@@ -1,10 +1,12 @@
 export function formatCurrency(amount: number): string {
-  return `Rs. ${amount.toLocaleString('en-PK', {
+  const validAmount = Number.isFinite(amount) ? amount : 0;
+  return `Rs. ${validAmount.toLocaleString('en-PK', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
 export function formatWholeCurrency(amount: number): string {
-  return `Rs. ${amount.toLocaleString('en-PK')}`;
+  const validAmount = Number.isFinite(amount) ? amount : 0;
+  return `Rs. ${validAmount.toLocaleString('en-PK')}`;
 }

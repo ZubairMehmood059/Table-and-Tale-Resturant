@@ -67,7 +67,13 @@ export function ManagementConsole({
   onTablesSynced,
   onRefreshTables,
 }: ManagementConsoleProps) {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return typeof window !== 'undefined' ? sessionStorage.getItem('tabletale_staff_token') : null;
+    } catch {
+      return null;
+    }
+  });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -92,19 +98,51 @@ export function ManagementConsole({
     async (authToken: string) => {
       setLoadingData(true);
       try {
-        const [ordersResp, salesResp, staffResp, feedbackResp] = await Promise.all([
+        const [ordersRes, salesRes, staffRes, feedbackRes] = await Promise.allSettled([
           fetchManagementOrders(authToken),
           fetchManagementSales(authToken),
           fetchManagementStaff(authToken),
           fetchManagementFeedback(authToken),
         ]);
-        setOrders(ordersResp.orders);
-        setSales(salesResp.report);
-        setStaff(staffResp.staff);
-        setGuestFeedbacks(feedbackResp.feedbacks || []);
-        await onRefreshTables();
+
+        let isAuthError = false;
+
+        if (ordersRes.status === 'fulfilled') {
+          setOrders(ordersRes.value.orders || []);
+        } else if (ordersRes.reason?.message?.includes('authentication required')) {
+          isAuthError = true;
+        }
+
+        if (salesRes.status === 'fulfilled') {
+          setSales(salesRes.value.report || null);
+        } else if (salesRes.reason?.message?.includes('authentication required')) {
+          isAuthError = true;
+        }
+
+        if (staffRes.status === 'fulfilled') {
+          setStaff(staffRes.value.staff || []);
+        } else if (staffRes.reason?.message?.includes('authentication required')) {
+          isAuthError = true;
+        }
+
+        if (feedbackRes.status === 'fulfilled') {
+          setGuestFeedbacks(feedbackRes.value.feedbacks || []);
+        } else if (feedbackRes.reason?.message?.includes('authentication required')) {
+          isAuthError = true;
+        }
+
+        if (isAuthError) {
+          try {
+            sessionStorage.removeItem('tabletale_staff_token');
+          } catch {
+            // ignore
+          }
+          setToken(null);
+        } else {
+          await onRefreshTables();
+        }
       } catch {
-        setToken(null);
+        // preserve current session
       } finally {
         setLoadingData(false);
       }
@@ -124,6 +162,11 @@ export function ManagementConsole({
     setLoggingIn(true);
     try {
       const resp = await managementLogin(password);
+      try {
+        sessionStorage.setItem('tabletale_staff_token', resp.token);
+      } catch {
+        // ignore
+      }
       setToken(resp.token);
       setPassword('');
       setShowPassword(false);
@@ -141,6 +184,11 @@ export function ManagementConsole({
       } catch {
         // Clear local session regardless
       }
+    }
+    try {
+      sessionStorage.removeItem('tabletale_staff_token');
+    } catch {
+      // ignore
     }
     setToken(null);
     setOrders([]);
@@ -183,7 +231,9 @@ export function ManagementConsole({
 
   const filteredOrders = orders.filter((ord) => {
     if (orderFilter === 'ALL') return true;
-    return ord.paymentStatus === orderFilter;
+    const paymentStatus =
+      ord.paymentStatus || (ord.paid ? 'PAID' : (ord.cancelled ? 'CANCELLED' : 'UNPAID'));
+    return paymentStatus === orderFilter;
   });
 
   const recentOrders = useMemo(() => [...orders].reverse().slice(0, 12), [orders]);
@@ -422,65 +472,74 @@ export function ManagementConsole({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {[...filteredOrders].reverse().map((ord) => (
-                      <motion.div
-                        key={ord.orderNumber}
-                        whileHover={{ y: -2 }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className="p-5 sm:p-7 rounded-2xl bg-[#FAF1EB]/95 border border-[#C6A36A]/60 hover:border-[#B58E4C] surface-card surface-card-hover"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-[#C6A36A]/35">
-                          <div>
-                            <p className="font-mono text-xs font-semibold text-[#7D591D] tabular-nums">
-                              Order #{ord.orderNumber} · {ord.diningType} · {ord.paymentStatus} ·
-                              Kitchen: {ord.kitchenStatus}
-                            </p>
-                            <h3 className="mt-1 font-display text-2xl font-bold text-[#1E1512]">
-                              {ord.customerName}
-                            </h3>
-                            {ord.diningType === 'Online Delivery' && ord.deliveryAddress && (
-                              <p className="mt-0.5 text-xs font-medium text-[#3D2E28]">
-                                Address: {ord.deliveryAddress}
+                    {[...filteredOrders].reverse().map((ord) => {
+                      const orderNum = ord.orderNumber || (ord.orderIndex + 1);
+                      const paymentStatus =
+                        ord.paymentStatus || (ord.paid ? 'PAID' : (ord.cancelled ? 'CANCELLED' : 'UNPAID'));
+                      const billTotal = ord.billTotal ?? ord.bill?.billTotal ?? 0;
+                      const subtotal = ord.subtotal ?? ord.bill?.subtotal ?? 0;
+                      const tax = ord.tax ?? ord.bill?.tax ?? 0;
+
+                      return (
+                        <motion.div
+                          key={orderNum}
+                          whileHover={{ y: -2 }}
+                          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                          className="p-5 sm:p-7 rounded-2xl bg-[#FAF1EB]/95 border border-[#C6A36A]/60 hover:border-[#B58E4C] surface-card surface-card-hover"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-[#C6A36A]/35">
+                            <div>
+                              <p className="font-mono text-xs font-semibold text-[#7D591D] tabular-nums">
+                                Order #{orderNum} · {ord.diningType} · {paymentStatus} ·
+                                Kitchen: {ord.kitchenStatus || 'Queued'}
                               </p>
-                            )}
-                            {ord.diningType === 'Dine-in' && (
-                              <p className="mt-0.5 text-xs font-medium text-[#3D2E28]">
-                                {ord.reservedTables.length > 0
-                                  ? `Tables: ${ord.reservedTables.join(', ')} · ${ord.guests} guests`
-                                  : 'Walk-in (Not Reserved)'}
+                              <h3 className="mt-1 font-display text-2xl font-bold text-[#1E1512]">
+                                {ord.customerName}
+                              </h3>
+                              {ord.diningType === 'Online Delivery' && ord.deliveryAddress && (
+                                <p className="mt-0.5 text-xs font-medium text-[#3D2E28]">
+                                  Address: {ord.deliveryAddress}
+                                </p>
+                              )}
+                              {ord.diningType === 'Dine-in' && (
+                                <p className="mt-0.5 text-xs font-medium text-[#3D2E28]">
+                                  {ord.reservedTables && ord.reservedTables.length > 0
+                                    ? `Tables: ${ord.reservedTables.join(', ')} · ${ord.guests} guests`
+                                    : 'Walk-in (Not Reserved)'}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="text-right">
+                              <p className="font-mono text-lg font-bold text-[#1E1512] tabular-nums">
+                                {formatCurrency(billTotal)}
+                              </p>
+                              <p className="font-mono text-xs font-medium text-[#3D2E28] tabular-nums">
+                                Subtotal {formatCurrency(subtotal)} · Tax {formatCurrency(tax)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-xs font-medium text-[#1E1512]">
+                            <p>
+                              Items:{' '}
+                              {(ord.items || []).map((item) => `${item.name} × ${item.quantity}`).join(' · ')}
+                            </p>
+                            {ord.paid && (
+                              <p className="font-mono font-semibold text-[#7D591D] tabular-nums">
+                                Rating: {ord.rating > 0 ? `${ord.rating}/5` : 'Not given'} · Tip:{' '}
+                                {formatCurrency(ord.tip)}
                               </p>
                             )}
                           </div>
-
-                          <div className="text-right">
-                            <p className="font-mono text-lg font-bold text-[#1E1512] tabular-nums">
-                              {formatCurrency(ord.billTotal)}
-                            </p>
-                            <p className="font-mono text-xs font-medium text-[#3D2E28] tabular-nums">
-                              Subtotal {formatCurrency(ord.subtotal)} · Tax {formatCurrency(ord.tax)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-xs font-medium text-[#1E1512]">
-                          <p>
-                            Items:{' '}
-                            {ord.items.map((item) => `${item.name} × ${item.quantity}`).join(' · ')}
-                          </p>
-                          {ord.paid && (
-                            <p className="font-mono font-semibold text-[#7D591D] tabular-nums">
-                              Rating: {ord.rating > 0 ? `${ord.rating}/5` : 'Not given'} · Tip:{' '}
-                              {formatCurrency(ord.tip)}
+                          {ord.review && (
+                            <p className="mt-2 text-xs italic font-medium text-[#362823]">
+                              Review: &ldquo;{ord.review}&rdquo;
                             </p>
                           )}
-                        </div>
-                        {ord.review && (
-                          <p className="mt-2 text-xs italic font-medium text-[#362823]">
-                            Review: &ldquo;{ord.review}&rdquo;
-                          </p>
-                        )}
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </motion.div>
@@ -567,82 +626,89 @@ export function ManagementConsole({
             )}
 
             {/* Tab 3: Total Sales Report */}
-            {activeTab === 'sales' && sales && (
-              <motion.div
-                key="tab-sales"
-                initial={{ opacity: 0.85, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5"
-              >
+            {activeTab === 'sales' && (
+              sales ? (
                 <motion.div
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="p-6 rounded-2xl bg-[#EED8D3] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
+                  key="tab-sales"
+                  initial={{ opacity: 0.85, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5"
                 >
-                  <p className="section-kicker">Total Orders Placed</p>
-                  <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
-                    {sales.totalOrders}
-                  </p>
-                </motion.div>
-                <motion.div
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="p-6 rounded-2xl bg-[#EED8D3] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
-                >
-                  <p className="section-kicker">Completed Paid Orders</p>
-                  <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
-                    {sales.totalCompletedOrders}
-                  </p>
-                </motion.div>
-                <motion.div
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="p-6 rounded-2xl bg-[#EED8D3] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
-                >
-                  <p className="section-kicker">Cancelled Orders</p>
-                  <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
-                    {sales.cancelledOrders}
-                  </p>
-                </motion.div>
-                <motion.div
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="p-6 rounded-2xl bg-[#1E1512] text-[#FFF9F1] border border-[#C6A36A] ring-2 ring-[#C6A36A]/40 surface-card surface-card-hover shadow-[0_14px_30px_-14px_rgba(30,21,18,0.5)]"
-                >
-                  <p className="section-kicker-gold">
-                    Total Sales Revenue
-                  </p>
-                  <p className="mt-2 font-mono text-3xl font-bold tabular-nums">
-                    {formatCurrency(sales.totalSales)}
-                  </p>
-                </motion.div>
-                <motion.div
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="p-6 rounded-2xl bg-[#FAF1EB] border border-[#C6A36A] ring-1 ring-[#C6A36A]/35 surface-card surface-card-hover"
-                >
-                  <p className="section-kicker">Total Tips Received</p>
-                  <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
-                    {formatCurrency(sales.totalTips)}
-                  </p>
-                </motion.div>
-                <motion.div
-                  whileHover={{ y: -2 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="p-6 rounded-2xl bg-[#FAF1EB] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
-                >
-                  <p className="section-kicker">Average Customer Rating</p>
-                  <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
-                    {sales.ratingCount > 0 ? `${sales.averageRating} / 5` : 'No ratings yet'}
-                  </p>
-                  {sales.ratingCount > 0 && (
-                    <p className="mt-1 text-xs font-medium text-[#3D2E28] tabular-nums">
-                      Based on {sales.ratingCount} order review(s)
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="p-6 rounded-2xl bg-[#EED8D3] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
+                  >
+                    <p className="section-kicker">Total Orders Placed</p>
+                    <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
+                      {sales.totalOrders}
                     </p>
-                  )}
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="p-6 rounded-2xl bg-[#EED8D3] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
+                  >
+                    <p className="section-kicker">Completed Paid Orders</p>
+                    <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
+                      {sales.totalCompletedOrders}
+                    </p>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="p-6 rounded-2xl bg-[#EED8D3] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
+                  >
+                    <p className="section-kicker">Cancelled Orders</p>
+                    <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
+                      {sales.cancelledOrders}
+                    </p>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="p-6 rounded-2xl bg-[#1E1512] text-[#FFF9F1] border border-[#C6A36A] ring-2 ring-[#C6A36A]/40 surface-card surface-card-hover shadow-[0_14px_30px_-14px_rgba(30,21,18,0.5)]"
+                  >
+                    <p className="section-kicker-gold">
+                      Total Sales Revenue
+                    </p>
+                    <p className="mt-2 font-mono text-3xl font-bold tabular-nums">
+                      {formatCurrency(sales.totalSales)}
+                    </p>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="p-6 rounded-2xl bg-[#FAF1EB] border border-[#C6A36A] ring-1 ring-[#C6A36A]/35 surface-card surface-card-hover"
+                  >
+                    <p className="section-kicker">Total Tips Received</p>
+                    <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
+                      {formatCurrency(sales.totalTips)}
+                    </p>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ y: -2 }}
+                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="p-6 rounded-2xl bg-[#FAF1EB] border border-[#C6A36A]/65 hover:border-[#B58E4C] surface-card surface-card-hover"
+                  >
+                    <p className="section-kicker">Average Customer Rating</p>
+                    <p className="mt-2 font-mono text-3xl font-bold text-[#1E1512] tabular-nums">
+                      {sales.ratingCount > 0 ? `${sales.averageRating} / 5` : 'No ratings yet'}
+                    </p>
+                    {sales.ratingCount > 0 && (
+                      <p className="mt-1 text-xs font-medium text-[#3D2E28] tabular-nums">
+                        Based on {sales.ratingCount} order review(s)
+                      </p>
+                    )}
+                  </motion.div>
                 </motion.div>
-              </motion.div>
+              ) : (
+                <div className="p-12 rounded-3xl bg-[#FAF1EB]/95 border border-[#C6A36A]/60 text-center surface-card">
+                  <p className="font-display text-2xl font-bold text-[#1E1512]">Sales Report Pending</p>
+                  <p className="mt-1 text-sm font-medium text-[#3D2E28]">Connecting to ledger totals...</p>
+                </div>
+              )
             )}
 
             {/* Tab 4: Guest Feedback Log */}
@@ -694,53 +760,56 @@ export function ManagementConsole({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {[...guestFeedbacks].reverse().map((fb) => (
-                      <motion.div
-                        key={fb.id}
-                        whileHover={{ y: -2 }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className="p-6 rounded-2xl bg-[#FAF1EB]/95 border border-[#C6A36A]/60 hover:border-[#B58E4C] surface-card surface-card-hover"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-4 pb-3.5 border-b border-[#C6A36A]/35">
-                          <div>
-                            <p className="font-mono text-xs font-semibold text-[#7D591D] tabular-nums">
-                              Guest Note #{fb.id} · {fb.categories.join(' · ')}
-                            </p>
-                            <h3 className="mt-1 font-display text-2xl font-bold text-[#1E1512]">
-                              {fb.customerName}
-                            </h3>
-                          </div>
-
-                          <div className="flex flex-col items-end gap-1">
-                            <div
-                              className="flex items-center gap-1"
-                              aria-label={`Rated ${fb.rating} out of 5 stars`}
-                            >
-                              {[1, 2, 3, 4, 5].map((n) => (
-                                <Star
-                                  key={n}
-                                  className="w-4 h-4"
-                                  fill={n <= fb.rating ? '#C6A36A' : 'none'}
-                                  stroke={n <= fb.rating ? '#7D591D' : '#B58E4C'}
-                                />
-                              ))}
-                              <span className="ml-1.5 font-mono text-xs font-bold text-[#1E1512] tabular-nums">
-                                {fb.rating}/5
-                              </span>
-                            </div>
-                            {fb.createdAt && (
-                              <p className="font-mono text-xs font-medium text-[#3D2E28] tabular-nums">
-                                {new Date(fb.createdAt).toLocaleString()}
+                    {[...guestFeedbacks].reverse().map((fb, idx) => {
+                      const fbId = fb.id ?? (fb.feedbackIndex != null ? fb.feedbackIndex + 1 : idx + 1);
+                      return (
+                        <motion.div
+                          key={fbId}
+                          whileHover={{ y: -2 }}
+                          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                          className="p-6 rounded-2xl bg-[#FAF1EB]/95 border border-[#C6A36A]/60 hover:border-[#B58E4C] surface-card surface-card-hover"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-4 pb-3.5 border-b border-[#C6A36A]/35">
+                            <div>
+                              <p className="font-mono text-xs font-semibold text-[#7D591D] tabular-nums">
+                                Guest Note #{fbId} · {(fb.categories || []).join(' · ')}
                               </p>
-                            )}
-                          </div>
-                        </div>
+                              <h3 className="mt-1 font-display text-2xl font-bold text-[#1E1512]">
+                                {fb.customerName}
+                              </h3>
+                            </div>
 
-                        <p className="mt-3.5 text-sm italic font-medium text-[#1E1512] leading-relaxed">
-                          &ldquo;{fb.comment}&rdquo;
-                        </p>
-                      </motion.div>
-                    ))}
+                            <div className="flex flex-col items-end gap-1">
+                              <div
+                                className="flex items-center gap-1"
+                                aria-label={`Rated ${fb.rating} out of 5 stars`}
+                              >
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                  <Star
+                                    key={n}
+                                    className="w-4 h-4"
+                                    fill={n <= fb.rating ? '#C6A36A' : 'none'}
+                                    stroke={n <= fb.rating ? '#7D591D' : '#B58E4C'}
+                                  />
+                                ))}
+                                <span className="ml-1.5 font-mono text-xs font-bold text-[#1E1512] tabular-nums">
+                                  {fb.rating}/5
+                                </span>
+                              </div>
+                              {fb.createdAt && (
+                                <p className="font-mono text-xs font-medium text-[#3D2E28] tabular-nums">
+                                  {new Date(fb.createdAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <p className="mt-3.5 text-sm italic font-medium text-[#1E1512] leading-relaxed">
+                            &ldquo;{fb.comment}&rdquo;
+                          </p>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </motion.div>
